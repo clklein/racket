@@ -731,7 +731,7 @@ before the pattern compiler is invoked.
        (let-values ([(match-context ctxt-has-hole?) (compile-pattern/default-cache context)]
                     [(match-contractum contractum-has-hole?) (compile-pattern/default-cache contractum)])
          (values
-          (match-in-hole context contractum exp match-context match-contractum)
+          (match-in-hole match-context match-contractum)
           (or ctxt-has-hole? contractum-has-hole?)))]
       [`(hide-hole ,p)
        (let-values ([(match-pat has-hole?) (compile-pattern/default-cache p)])
@@ -1135,8 +1135,8 @@ before the pattern compiler is invoked.
                             the-hole
                             none)))))
 
-;; match-in-hole : sexp sexp sexp compiled-pattern compiled-pattern -> compiled-pattern
-(define (match-in-hole context contractum exp match-context match-contractum)
+;; match-in-hole : compiled-pattern compiled-pattern -> compiled-pattern
+(define (match-in-hole match-context match-contractum)
   (lambda (exp old-hole-info)
     (let ([mtches (match-context exp #t)])
       (and mtches
