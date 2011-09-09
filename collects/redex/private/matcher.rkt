@@ -16,6 +16,10 @@ before the pattern compiler is invoked.
          scheme/contract
          "underscore-allowed.rkt")
 
+(define-struct M (term binding))
+(define-struct decomp (context term))
+(define-struct non-decomp ())
+
 (define-struct compiled-pattern (cp))
 
 (define caching-enabled? (make-parameter #t))
@@ -1178,10 +1182,10 @@ before the pattern compiler is invoked.
     
     (and (not (null? raw-match))
          (let loop ([raw-match raw-match])
-	   (cond
-	    [(null? raw-match) '()]
-	    [else (append (combine-matches (car raw-match))
-			  (loop (cdr raw-match)))])))))
+           (cond
+             [(null? raw-match) '()]
+             [else (append (combine-matches (car raw-match))
+                           (loop (cdr raw-match)))])))))
 
 ;; match-list/raw : (listof (union repeat compiled-pattern)) 
 ;;                  sexp
