@@ -43,6 +43,7 @@
          define-term
          match? match-bindings
          make-bind bind? bind-name bind-exp
+         (struct-out frame)
          
          test-equal
          test-->>

@@ -169,11 +169,8 @@
        (and (mtch? snd)
             (loop (mtch-bindings fst)
                   (mtch-bindings snd))
-            (let ([g1 (gensym 'run-match-test-sym)])
-              (equal/bindings? (mtch-context fst)
-                               (mtch-context snd)))
-            (equal/bindings? (mtch-hole fst)
-                             (mtch-hole snd)))]
+            (equal/bindings? (mtch-matched fst)
+                             (mtch-matched snd)))]
       [(bindings? fst)
        (and (bindings? snd)
             (let ([fst-table (bindings-table fst)]
@@ -185,13 +182,10 @@
                     (sort fst-table rib-lt)
                     (sort snd-table rib-lt)))))]
       [(and (bind? fst)
-            (bind? snd)
-            (context? (bind-exp fst))
-            (context? (bind-exp snd)))
+            (bind? snd))
        (and (equal? (bind-name fst) (bind-name snd))
-            (let ([g (gensym 'run-match-test-sym2)])
-              (equal/bindings? (bind-exp fst)
-                               (bind-exp snd))))]
+            (equal/bindings? (bind-exp fst)
+                             (bind-exp snd)))]
       [(and (hole? fst)
             (hole? snd))
        #t]

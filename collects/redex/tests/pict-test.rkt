@@ -7,8 +7,6 @@
   (require "../reduction-semantics.rkt"
            "../pict.rkt")
   
-  (require texpict/mrpict mred/mred mzlib/class)
-  
   (define-language empty-language)
   
   (define-language var-ab

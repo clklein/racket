@@ -7,10 +7,11 @@
                   make-bindings
                   make-bind
                   make-mtch
-                  build-flat-context
                   the-hole
                   )
          racket/list)
+
+(define build-flat-context identity)
 
 (define plug (λ (x y)
                (cond 

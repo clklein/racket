@@ -960,6 +960,7 @@
            [done? #t])
           ()
           (list 99 101 99)))
+  #;
   (test "post thunk captures continuation that is invoked without target % (gets stuck)"
         '(<>
           ([output (list)]
@@ -1011,6 +1012,7 @@
                         hole))
                  100)
                 (λ (x1) x1)))))
+  #;
   (test "similar way to get stuck, but using the pre thunk"
         '(<>
           ([output (list)]

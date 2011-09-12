@@ -1,6 +1,6 @@
 #lang scheme/gui
 (require framework
-         slideshow/pict
+         (only-in slideshow/pict pict-width pict-height draw-pict)
          racket/runtime-path
          "../pict.rkt"
          "../reduction-semantics.rkt")

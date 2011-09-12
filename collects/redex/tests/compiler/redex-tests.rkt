@@ -6,17 +6,17 @@
 (require "../../private/compiler/match.rkt")
 (require "../../private/compiler/redextomatrix.rkt")
 
-(define (make-test-mtch a b c) (make-mtch a (build-flat-context b) c))
+(define (make-test-mtch a b c) (make-mtch a b c))
 
 (define (build-context c)
   (let loop ([c c])
     (cond
       [(eq? c the-hole) the-hole]
-      [(pair? c) (build-cons-context (loop (car c)) (loop (cdr c)))]
+      [(pair? c) (cons (loop (car c)) (loop (cdr c)))]
       [(or (null? c)
            (number? c)
            (symbol? c))
-       (build-flat-context c)]
+       c]
       [else (error 'build-context "unknown ~s" c)])))
 
 (define no-context #f)
