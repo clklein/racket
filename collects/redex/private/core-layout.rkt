@@ -1,7 +1,7 @@
 #lang scheme/base
 
 (require "loc-wrapper.rkt"
-         (except-in "matcher.rkt" frame)
+         "matcher.rkt"
          "reduction-semantics.rkt"
          
          texpict/utils

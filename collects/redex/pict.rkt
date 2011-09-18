@@ -4,7 +4,7 @@
          "private/pict.rkt"
          "private/core-layout.rkt"
          "private/loc-wrapper.rkt"
-         (except-in "reduction-semantics.rkt" frame)
+         "reduction-semantics.rkt"
          texpict/mrpict)
 
 (define reduction-rule-style/c

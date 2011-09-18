@@ -17,9 +17,9 @@
                           #,(syntax/loc stx 
                               (test-equal (exn-message exn) "")))])
          (let ([e (term expr)])
-           (let ([v ((make-eval -->SL (redex-match SL v))
+           (let ([v ((make-eval -->SL SL)
                      (term (∅ / ,e)))]
-                 [u ((make-eval -->TL (redex-match TL v))
+                 [u ((make-eval -->TL TL)
                      (term (∅ / (translate ,e))))])
              #,(syntax/loc stx (test-equal u v)))))]))
 
@@ -103,9 +103,12 @@
 ; continuation value in continuation mark of a continuation value
 (test-translation
  ((λ (x) ("skipped" x))
-  ((κ (w-c-m ("a") (κ ((λ (x) ("wrapped" x)) hole))
-             ((λ (x) ("skipped" x))
-              (hole))))
+  ((κ ,(right (term w-c-m)
+              (right (term ("a"))
+                     (right (term (κ ((λ (x) ("wrapped" x)) hole)))
+                            (left (term ((λ (x) ("skipped" x))
+                                         (hole)))
+                                  null)))))
    (λ ()
      ((λ (ms)
         (match ms

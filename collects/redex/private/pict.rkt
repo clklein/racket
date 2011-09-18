@@ -11,7 +11,7 @@
          "reduction-semantics.rkt"
          "struct.rkt"
          "loc-wrapper.rkt"
-         (except-in "matcher.rkt" frame)
+         "matcher.rkt"
          "arrow.rkt"
          "core-layout.rkt")
 (require (for-syntax racket/base

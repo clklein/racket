@@ -22,7 +22,7 @@
          
          define-language
          define-extended-language
-         plug
+         plug left right
          compiled-lang?
          term
          term-let
@@ -43,7 +43,6 @@
          define-term
          match? match-bindings
          make-bind bind? bind-name bind-exp
-         (struct-out frame)
          
          test-equal
          test-->>

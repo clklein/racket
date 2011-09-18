@@ -5,11 +5,12 @@
                      syntax/boundmap
                      syntax/parse
                      racket/syntax)
+         racket/match
          "error.rkt"
          "matcher.rkt")
 
 (provide term term-let define-term
-         hole in-hole
+         hole in-hole plug extend-paths
          term-let/error-name term-let-fn term-define-fn)
 
 (define-syntax (hole stx) (raise-syntax-error 'hole "used outside of term"))
@@ -36,7 +37,7 @@
     (let-values ([(rewritten max-depth) (rewrite/max-depth args depth)])
       (let ([result-id (car (generate-temporaries '(f-results)))])
         (with-syntax ([fn fn])
-          (let loop ([func (syntax (λ (x) (fn (syntax->datum x))))]
+          (let loop ([func (syntax (λ (x) (fn (map extend-paths (syntax->datum x)))))]
                      [args-stx rewritten]
                      [res result-id]
                      [args-depth (min depth max-depth)])
@@ -130,7 +131,7 @@
                 (λ (f _) (defined-check f "metafunction")))
             #,(let loop ([bs (reverse outer-bindings)])
                 (cond
-                  [(null? bs) (syntax (syntax->datum (quasisyntax rewritten)))]
+                  [(null? bs) (syntax (extend-paths (syntax->datum (quasisyntax rewritten))))]
                   [else (with-syntax ([rec (loop (cdr bs))]
                                       [fst (car bs)])
                           (syntax (with-syntax (fst)
@@ -228,3 +229,44 @@
      #'(begin
          (define term-val (term t))
          (define-syntax x (defined-term #'term-val)))]))
+
+(define plug
+  (match-lambda**
+   [((? hole?) t) t]
+   [((left C* t) u)
+    ((if (or (left? u) (right? u) (hole? u)) left cons)
+     (plug C* u)
+     t)]
+   [((right t C*) u)
+    ((if (or (left? u) (right? u) (hole? u)) right cons)
+     t
+     (plug C* u))]
+   [(t _)
+    (redex-error 'plug "term has no pluggable hole:\n~s" t)]))
+
+(define (extend-paths t)
+  (define-values (extended _)
+    (let extend ([t t])
+      (match t
+        [(? hole?) 
+         (values t #t)]
+        [(left C r)
+         (values (left (extend-paths C)
+                       (extend-paths r))
+                 #t)]
+        [(right l C)
+         (values (right (extend-paths l)
+                        (extend-paths C))
+                 #t)]
+        [(cons l r)
+         (define-values (l* l?)
+           (extend l))
+         (define-values (r* r?)
+           (extend r))
+         (cond [(and l? (not r?))
+                (values (left l* r*) #t)]
+               [(and r? (not l?))
+                (values (right l* r*) #t)]
+               [else (values (cons l* r*) #f)])]
+        [_ (values t #f)])))
+  extended)

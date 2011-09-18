@@ -1,6 +1,7 @@
 (module term-test scheme
   (require "../private/term.rkt"
            "../private/matcher.rkt"
+           "../private/error.rkt"
            "test-util.rkt")
   
   (reset-count)
@@ -11,7 +12,6 @@
   (test (term-let ([(x ...) (list 1 2 3)]) (term ((y x) ...))) '((y 1) (y 2) (y 3)))
   
   (test (term (in-hole (1 hole) 2)) (term (1 2)))
-  (test (term (in-hole (1 hole (hole x)) 2)) (term (1 2 (hole x))))
   
   (test (equal? (term hole) (term hole)) #t)
   (test (hole? (term hole)) #t)
@@ -63,9 +63,9 @@
   
   ;; test that the implicit `plug' inserted by `in-hole' 
   ;; deals with ellipses properly
-  (test (term-let ([(E ...) '(1 2 3)])
+  (test (term-let ([(E ...) (list (term (1 hole)) (term (2 hole)) (term (3 hole)))])
           (term ((in-hole E x) ...)))
-        (term (1 2 3)))
+        (term ((1 x) (2 x) (3 x))))
   
   (test (term-let-fn ((metafun car))
                      (term-let ((x 'whatever)
@@ -99,7 +99,34 @@
                      (term-let ((((x ...) ...) '((1 2) (3 4 5) (6))))
                                (term ((f x ...) ...))))
         '(3 12 6))
-
+  
+  (test (plug the-hole 'a) 'a)
+  (test (plug (left the-hole 'b) 'a) (cons 'a 'b))
+  (test (plug (left the-hole 'b) (right 'a the-hole)) (left (right 'a the-hole) 'b))
+  (test (plug (right 'a the-hole) 'b) (cons 'a 'b))
+  (test (plug (right 'a the-hole) (left the-hole 'b)) (right 'a (left the-hole 'b)))
+  (test (with-handlers ([exn:fail:redex? exn-message])
+          (plug '(a b c) 'd)
+          "")
+        #rx"term has no pluggable hole")
+  
+  (test (extend-paths (cons the-hole 1)) (left the-hole 1))
+  (test (extend-paths (cons 1 the-hole)) (right 1 the-hole))
+  (test (extend-paths (cons (left (right (cons the-hole 2) (left the-hole (cons the-hole 3)))
+                                  (cons 4 the-hole))
+                            1))
+        (left (left (right (left the-hole 2) (left the-hole (left the-hole 3)))
+                    (right 4 the-hole))
+              1))
+  (test (extend-paths (cons (left the-hole 1) (right 2 the-hole)))
+        (cons (left the-hole 1) (right 2 the-hole)))
+  (test (extend-paths (cons the-hole (right 2 the-hole)))
+        (cons the-hole (right 2 the-hole)))
+  
+  (test (term-let-fn ((f (λ (cs) (apply plug cs))))
+                     (term (0 (f (1 hole) (2 hole)))))
+        (right 0 (left (right 1 (left (right 2 (left the-hole null)) null)) null)))
+  
   (define-namespace-anchor here)
   (define ns (namespace-anchor->namespace here))
   

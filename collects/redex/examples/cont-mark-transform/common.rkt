@@ -4,12 +4,18 @@
          "TL-syntax.rkt" "TL-semantics.rkt"
          redex)
 
-(define ((make-eval --> value?) program)
-  (match (unique-normal-form program -->)
-    [(and state `(,_ / ,expr))
-     (if (value? expr)
-         (term (answer ,expr))
-         (raise (eval-undefined "stuck" (current-continuation-marks) program state)))]))
+(define-syntax-rule (make-eval red-rel-expr lang-id)
+  (let ([red-rel red-rel-expr])
+    (define extract-answer
+      (term-match/single 
+       lang-id
+       [(Σ / v) (term (answer v))]
+       [any #f]))
+    (λ (program)
+      (define state (unique-normal-form program red-rel))
+      (define answer (extract-answer state))
+      (or answer
+          (raise (eval-undefined "stuck" (current-continuation-marks) program state))))))
 (define-struct (eval-undefined exn:fail) (input stuck-state))
 (provide make-eval
          (struct-out eval-undefined))
@@ -46,25 +52,23 @@
 
 (define-syntax (test-result stx)
   (syntax-case stx ()
-    [(_ R Σ e v)
-     #`(match (unique-normal-form (term (Σ / e)) R)
-         [`(,_ / ,u)
-          #,(syntax/loc stx (test-equal u (term v)))])]))
+    [(_ L R Σ0 e0 v)
+     #`(redex-let L ([(Σ / e) (unique-normal-form (term (Σ0 / e0)) R)])
+                  #,(syntax/loc stx (test-equal (term e) (term v))))]))
 
 (define-syntax (test-stuck stx)
   (syntax-case stx ()
-    [(_ R v? Σ e)
-     #`(match (unique-normal-form (term (Σ / e)) R)
-         [`(,_ / ,r)
-          #,(syntax/loc stx (test-predicate (negate v?) r))])]))
+    [(_ L R v? Σ0 e0)
+     #`(redex-let L ([(Σ / e) (unique-normal-form (term (Σ0 / e0)) R)])
+                  #,(syntax/loc stx (test-predicate (negate v?) (term e))))]))
 
 (define-syntax-rule (define-test-forms language relation test-result-id test-stuck-id)
   (begin
     (define value? (redex-match language v))
     (define-syntax-rule (test-result-id . args)
-      (test-result relation . args))
+      (test-result language relation . args))
     (define-syntax-rule (test-stuck-id . args)
-      (test-stuck relation value? . args))
+      (test-stuck language relation value? . args))
     (provide test-result-id test-stuck-id)))
 
 (define-test-forms SL -->SL test-SL-result test-SL-stuck)

@@ -114,9 +114,9 @@
         (compares-incomparable-keys? expr))))
 
 (define SL-eval
-  (make-eval -->SL (redex-match SL v)))
+  (make-eval -->SL SL))
 (define TL-eval
-  (make-eval -->TL (redex-match TL v)))
+  (make-eval -->TL TL))
 
 ;; Utilities
 (define-syntax-rule (test-translation predicate . kw-args)
