@@ -2,7 +2,7 @@
 (require redex)
 
 (define-language tl-grammar
-  [v (cont (hide-hole E))]
+  [v (cont E)]
   [E hole
      (v ... E)])
 
@@ -13,8 +13,8 @@
         (in-hole E_1 1)]))
 
 (test--> test1 
-         (term ((cont hole) (explode)))
-         (term ((cont hole) 1)))
+         (term ((hide-hole (cont hole)) (explode)))
+         (term ((hide-hole (cont hole)) 1)))
 
 (define test2
   (reduction-relation

@@ -10,11 +10,14 @@
          "matcher.rkt")
 
 (provide term term-let define-term
-         hole in-hole plug extend-paths
+         hole in-hole hide-hole plug
          term-let/error-name term-let-fn term-define-fn)
 
 (define-syntax (hole stx) (raise-syntax-error 'hole "used outside of term"))
 (define-syntax (in-hole stx) (raise-syntax-error 'in-hole "used outside of term"))
+(define-syntax (hide-hole stx) (raise-syntax-error 'hide-hole "used outside of term"))
+
+(define-struct hidden-hole (term))
 
 (define (with-syntax* stx)
   (syntax-case stx ()
@@ -33,36 +36,38 @@
     (let-values ([(rewritten _) (rewrite/max-depth stx 0)])
       rewritten))
   
+  (define (metafunction-application f)
+    #`(λ (x) (#,f (map make-term (syntax->list x)))))
+  
   (define (rewrite-application fn args depth)
     (let-values ([(rewritten max-depth) (rewrite/max-depth args depth)])
       (let ([result-id (car (generate-temporaries '(f-results)))])
-        (with-syntax ([fn fn])
-          (let loop ([func (syntax (λ (x) (fn (map extend-paths (syntax->datum x)))))]
-                     [args-stx rewritten]
-                     [res result-id]
-                     [args-depth (min depth max-depth)])
-            (with-syntax ([func func]
-                          [args args-stx]
-                          [res res])
-              (if (zero? args-depth)
-                  (begin
-                    (set! outer-bindings 
-                          (cons (syntax [res (func (quasisyntax args))])
-                                outer-bindings))
-                    (values result-id (min depth max-depth)))
-                  (loop (syntax (λ (l) (map func (syntax->list l))))
-                        (syntax/loc args-stx (args (... ...)))
-                        (syntax (res (... ...)))
-                        (sub1 args-depth)))))))))
+        (let loop ([func fn]
+                   [args-stx rewritten]
+                   [res result-id]
+                   [args-depth (min depth max-depth)])
+          (with-syntax ([func func]
+                        [args args-stx]
+                        [res res])
+            (if (zero? args-depth)
+                (begin
+                  (set! outer-bindings 
+                        (cons (syntax [res (func (quasisyntax args))])
+                              outer-bindings))
+                  (values result-id (min depth max-depth)))
+                (loop (syntax (λ (l) (map func (syntax->list l))))
+                      (syntax/loc args-stx (args (... ...)))
+                      (syntax (res (... ...)))
+                      (sub1 args-depth))))))))
   
   (define (rewrite/max-depth stx depth)
-    (syntax-case stx (unquote unquote-splicing in-hole hole)
+    (syntax-case stx (unquote unquote-splicing in-hole hole hide-hole)
       [(metafunc-name arg ...)
        (and (identifier? (syntax metafunc-name))
             (term-fn? (syntax-local-value (syntax metafunc-name) (λ () #f))))
        (let ([f (term-fn-get-id (syntax-local-value/record (syntax metafunc-name) (λ (x) #t)))])
          (free-identifier-mapping-put! applied-metafunctions f #t)
-         (rewrite-application f (syntax/loc stx (arg ...)) depth))]
+         (rewrite-application (metafunction-application f) (syntax/loc stx (arg ...)) depth))]
       [f
        (and (identifier? (syntax f))
             (term-fn? (syntax-local-value (syntax f) (λ () #f))))
@@ -91,9 +96,13 @@
       [(unquote-splicing . x)
        (raise-syntax-error 'term "malformed unquote splicing" orig-stx stx)]
       [(in-hole id body)
-       (rewrite-application (syntax (λ (x) (apply plug x))) (syntax/loc stx (id body)) depth)]
+       (rewrite-application #'plug-instantiated (syntax/loc stx (id body)) depth)]
       [(in-hole . x)
        (raise-syntax-error 'term "malformed in-hole" orig-stx stx)]
+      [(hide-hole t)
+       (rewrite-application (metafunction-application #'hidden-hole) (syntax/loc stx (t)) depth)]
+      [(hide-hole . _)
+       (raise-syntax-error 'term "malformed hide-hole" orig-stx stx)]
       [hole (values (syntax (unsyntax the-hole)) 0)]
       
       
@@ -122,20 +131,91 @@
       [_ (values stx 0)]))
   
   (syntax-case orig-stx ()
-    [(_ arg)
+    [(_ template)
      (with-disappeared-uses
-      (with-syntax ([rewritten (rewrite (syntax arg))])
+      (with-syntax ([rewritten (rewrite (syntax template))])
         #`(begin
             #,@(free-identifier-mapping-map
                 applied-metafunctions
                 (λ (f _) (defined-check f "metafunction")))
             #,(let loop ([bs (reverse outer-bindings)])
                 (cond
-                  [(null? bs) (syntax (extend-paths (syntax->datum (quasisyntax rewritten))))]
+                  [(null? bs) (syntax (make-term (quasisyntax rewritten)))]
                   [else (with-syntax ([rec (loop (cdr bs))]
                                       [fst (car bs)])
                           (syntax (with-syntax (fst)
                                     rec)))])))))]))
+
+(define (plug-instantiated args)
+  (syntax-case args ()
+    [(c t)
+     (let*-values ([(c* _) (make-term* #'c)]
+                   [(t* t?) (make-term* #'t)]
+                   [(p p?) (plug* c* t* t?)])
+       (instantiated p p?))]))
+
+(define-struct instantiated (term hole?))
+
+(define make-term*
+  (match-lambda
+    [(? syntax? stx)
+     (make-term* (syntax-e stx))]
+    [(hidden-hole (list t))
+     (values (make-term t) #f)]
+    [(instantiated t h?)
+     (values t h?)]
+    [(? hole?)
+     (values the-hole #t)]
+    [(left l r)
+     (values (left (make-term l) (make-term r))
+             #t)]
+    [(right l r)
+     (values (right (make-term l) (make-term r))
+             #t)]
+    [(cons l r)
+     (define-values (lt lh?) (make-term* l))
+     (define-values (rt rh?) (make-term* r))
+     (join lt lh? rt rh?)]
+    [t (values t #f)]))
+(define (make-term s)
+  (let-values ([(t _) (make-term* s)])
+    t))
+
+(define (plug* C t t?)
+  (match C
+    [(? hole?) (values t t?)]
+    [(left C* r) 
+     (let-values ([(p p?) (plug* C* t t?)])
+       (join p p? r #f))]
+    [(right l C*)
+     (let-values ([(p p?) (plug* C* t t?)])
+       (join l #f p p?))]
+    [_ (redex-error 'plug "term has no pluggable hole:\n~s" C)]))
+
+(define (plug C t)
+  (let-values ([(p _) (plug* C t (has-context? t))])
+    p))
+
+(define has-context?
+  (match-lambda
+    [(? hole?) #t]
+    [(? left?) #t]
+    [(? right?) #t]
+    [(cons l r) 
+     (or (has-context? l)
+         (has-context? r))]
+    [_ #f]))
+
+(define (join l l? r r?)
+  (match* (l? r?)
+          [(#t #t) 
+           (values (cons l r) #t)]
+          [(#t #f)
+           (values (left l r) #t)]
+          [(#f #t) 
+           (values (right l r) #t)]
+          [(#f #f) 
+           (values (cons l r) #f)]))
 
 (define-syntax (term-let-fn stx)
   (syntax-case stx ()
@@ -229,44 +309,3 @@
      #'(begin
          (define term-val (term t))
          (define-syntax x (defined-term #'term-val)))]))
-
-(define plug
-  (match-lambda**
-   [((? hole?) t) t]
-   [((left C* t) u)
-    ((if (or (left? u) (right? u) (hole? u)) left cons)
-     (plug C* u)
-     t)]
-   [((right t C*) u)
-    ((if (or (left? u) (right? u) (hole? u)) right cons)
-     t
-     (plug C* u))]
-   [(t _)
-    (redex-error 'plug "term has no pluggable hole:\n~s" t)]))
-
-(define (extend-paths t)
-  (define-values (extended _)
-    (let extend ([t t])
-      (match t
-        [(? hole?) 
-         (values t #t)]
-        [(left C r)
-         (values (left (extend-paths C)
-                       (extend-paths r))
-                 #t)]
-        [(right l C)
-         (values (right (extend-paths l)
-                        (extend-paths C))
-                 #t)]
-        [(cons l r)
-         (define-values (l* l?)
-           (extend l))
-         (define-values (r* r?)
-           (extend r))
-         (cond [(and l? (not r?))
-                (values (left l* r*) #t)]
-               [(and r? (not l?))
-                (values (right l* r*) #t)]
-               [else (values (cons l* r*) #f)])]
-        [_ (values t #f)])))
-  extended)

@@ -505,6 +505,26 @@
                (in-domain? (f y)))
      #f))
   
+  (let ()
+    (define-language L
+      (C (hole variable)))
+    
+    (define-metafunction L
+      [(f (in-hole C variable)) C])
+    (define-metafunction L
+      [(g C number) (in-hole C number)])
+    
+    (let ([ns '(1 2 3)])
+      (test (for/list ([n ns]
+                       [t (term-let ([(x ...) ns]
+                                     [(y ...) '(a b c)])
+                                    (term ((x (f (y z))) ...)))])
+              (plug t n))
+            (for/list ([n ns])
+              `(,n (,n z)))))
+    (test (term (g (hole a) 1))
+          (term (1 a))))
+  
   ; Extension reinterprets the base meta-function's contract
   ; according to the new language.
   (let ()
@@ -1236,7 +1256,7 @@
                         number)
                (in-hole E ,(add1 (term number)))))
          (term (hole 2)))
-        (list (term (hole 3))))
+        (list (term ((hide-hole hole) 3))))
   
   (test (apply-reduction-relation/tag-with-names
          (reduction-relation 

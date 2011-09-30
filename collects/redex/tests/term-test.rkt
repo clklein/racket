@@ -100,6 +100,12 @@
                                (term ((f x ...) ...))))
         '(3 12 6))
   
+  (test (term (hole 2)) (left the-hole '(2)))
+  (test (term (1 hole)) (right 1 (left the-hole null)))
+  (test (term (hole hole)) (list the-hole the-hole))
+  (test (term (hole (hide-hole hole))) (left the-hole (list the-hole)))
+  (test (term (hide-hole 1)) 1)
+  
   (test (plug the-hole 'a) 'a)
   (test (plug (left the-hole 'b) 'a) (cons 'a 'b))
   (test (plug (left the-hole 'b) (right 'a the-hole)) (left (right 'a the-hole) 'b))
@@ -109,19 +115,6 @@
           (plug '(a b c) 'd)
           "")
         #rx"term has no pluggable hole")
-  
-  (test (extend-paths (cons the-hole 1)) (left the-hole 1))
-  (test (extend-paths (cons 1 the-hole)) (right 1 the-hole))
-  (test (extend-paths (cons (left (right (cons the-hole 2) (left the-hole (cons the-hole 3)))
-                                  (cons 4 the-hole))
-                            1))
-        (left (left (right (left the-hole 2) (left the-hole (left the-hole 3)))
-                    (right 4 the-hole))
-              1))
-  (test (extend-paths (cons (left the-hole 1) (right 2 the-hole)))
-        (cons (left the-hole 1) (right 2 the-hole)))
-  (test (extend-paths (cons the-hole (right 2 the-hole)))
-        (cons the-hole (right 2 the-hole)))
   
   (test (term-let-fn ((f (λ (cs) (apply plug cs))))
                      (term (0 (f (1 hole) (2 hole)))))

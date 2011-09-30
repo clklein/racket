@@ -11,7 +11,7 @@
 
 (provide reduction-relation 
          --> fresh with ;; keywords for reduction-relation
-         hole in-hole ;; keywords for term
+         hole in-hole hide-hole ;; keywords for term
          ::= ;; keywords for language definition
          I O ;; keyword for define-judgment-form
          extend-reduction-relation
