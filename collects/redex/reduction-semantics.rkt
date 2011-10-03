@@ -22,7 +22,7 @@
          
          define-language
          define-extended-language
-         plug left right
+         plug layer
          compiled-lang?
          term
          term-let

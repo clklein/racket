@@ -56,77 +56,21 @@ before the pattern compiler is invoked.
 (define-struct mtch (bindings matched) #:transparent)
 (define (literal-match x)
   (mtch (make-bindings '())
-        (non-decomp x)))
+        (non-decomp)))
 
 (define-struct decomp (context term) #:transparent)
-(define-struct non-decomp (term) #:transparent) ; field's value useful only for repeat patterns
+(define-struct non-decomp () #:transparent)
 
 (define (non-decomps matches)
   (filter (match-lambda
             [(mtch _ (decomp _ _)) #f]
-            [(mtch _ (non-decomp _)) #t])
+            [(mtch _ (non-decomp)) #t])
           matches))
 
-(define-struct left (first rest) #:transparent)
-(define-struct right (first rest) #:transparent)
-
-(define term-length
-  (match-lambda
-    [(? null?) 0]
-    [(cons _ t) (+ 1 (term-length t))]
-    [(left _ t) (+ 1 (term-length t))]
-    [(right _ t) (+ 1 (term-length t))]))
-
-(define term-first
-  (match-lambda
-    [(cons t _) t]
-    [(left t _) t]
-    [(right t _) t]))
-
-(define term-rest
-  (match-lambda
-    [(cons _ t) t]
-    [(left _ t) t]
-    [(right _ t) t]))
-
-(define (term-take ts n)
-  (if (= n 0)
-      null
-      (match ts
-        [(cons t ts*)
-         (cons t (term-take ts* (- n 1)))]
-        [(left t ts*)
-         (left t (term-take ts* (- n 1)))]
-        [(right t ts*)
-         (right t (term-take ts* (- n 1)))])))
-
-(define (term-append ts us)
-  (match ts
-    [(? null?) us]
-    [(cons t ts*) (cons t (term-append ts* us))]
-    [(left t ts*) (left t (term-append ts* us))]
-    [(right t ts*) (right t (term-append ts* us))]))
-
-(define term-constructor
-  (match-lambda
-    [(left _ _) left]
-    [(right _ _) right]
-    [(cons _ _) cons]))
-
-(define term-list?
-  (match-lambda
-    [(? null?) #t]
-    [(cons _ t) (term-list? t)]
-    [(left _ t) (term-list? t)]
-    [(right _ t) (term-list? t)]
-    [_ #f]))
-
-(define term-pair?
-  (match-lambda
-    [(cons _ _) #t]
-    [(left _ _) #t]
-    [(right _ _) #t]
-    [_ #f]))
+(define-struct layer (left focus right) #:transparent)
+(define (context? t)
+  (or (hole? t)
+      (layer? t)))
 
 (define none
   (let ()
@@ -755,13 +699,17 @@ before the pattern compiler is invoked.
          (let ([count (and (not (ormap repeat? rewritten))
                            (length rewritten))])
            (lambda (exp)
+             (define term
+               (match exp
+                 [(layer l c r) (append l (cons c r))]
+                 [_ exp]))
              (cond
-               [(term-list? exp)
+               [(list? term)
                 ;; shortcircuit: if the list isn't the right length, give up immediately.
                 (if (and count
-                         (not (= (term-length exp) count)))
+                         (not (= (length term) count)))
                     #f
-                    (match-list rewritten exp))]
+                    (match-list rewritten term))]
                [else #f]))))]
       
       ;; an already comiled pattern
@@ -825,7 +773,7 @@ before the pattern compiler is invoked.
                     (define named
                       (match (mtch-matched m)
                         [(decomp c t) c]
-                        [(non-decomp t) t]))
+                        [(non-decomp) exp]))
                     (mtch (make-bindings 
                            (cons (if mismatch-bind?
                                      (make-mismatch-bind name named)
@@ -891,7 +839,7 @@ before the pattern compiler is invoked.
           (decomp the-hole exp)))
   (if (hole? exp)
       (list decomp-match
-            (mtch (make-bindings '()) (non-decomp the-hole)))
+            (mtch (make-bindings '()) (non-decomp)))
       (list decomp-match)))
 
 ;; match-in-hole : compiled-pattern compiled-pattern -> compiled-pattern
@@ -901,7 +849,7 @@ before the pattern compiler is invoked.
       (and context-matches
            (for/fold ([matches '()]) ([context-match context-matches])
                      (match context-match
-                       [(mtch _ (non-decomp _))
+                       [(mtch _ (non-decomp))
                         matches]
                        [(mtch context-bindings (decomp context contractum-term))
                         (let ([contractum-matches (match-contractum contractum-term)])
@@ -909,9 +857,9 @@ before the pattern compiler is invoked.
                               (for/fold ([matches matches]) 
                                         ([contractum-match contractum-matches])
                                         (match contractum-match
-                                          [(mtch contractum-bindings (non-decomp contractum))
+                                          [(mtch contractum-bindings (non-decomp))
                                            (cons (mtch (append-bindings contractum-bindings context-bindings)
-                                                       (non-decomp exp))
+                                                       (non-decomp))
                                                  matches)]
                                           [(mtch contractum-bindings (decomp inner-context inner-term))
                                            (cons (mtch (append-bindings contractum-bindings context-bindings)
@@ -923,10 +871,10 @@ before the pattern compiler is invoked.
 (define append-contexts
   (match-lambda**
    [((? hole?) c) c]
-   [((left c1 t) c2)
-    (left (append-contexts c1 c2) t)]
-   [((right t c1) c2)
-    (right t (append-contexts c1 c2))]))
+   [((layer l c1 r) c2)
+    (layer l (append-contexts c1 c2) r)]))
+
+(define-struct (indexed-decomp decomp) (index))
 
 ;; match-list : (listof (union repeat compiled-pattern)) sexp -> (union #f (listof bindings))
 (define (match-list patterns exp)
@@ -936,7 +884,7 @@ before the pattern compiler is invoked.
          (let loop ([raw-match raw-match])
            (cond
              [(null? raw-match) '()]
-             [else (append (combine-matches (car raw-match))
+             [else (append (combine-matches exp (car raw-match))
                            (loop (cdr raw-match)))])))))
 
 ;; match-list/raw : (listof (union repeat compiled-pattern)) 
@@ -949,10 +897,11 @@ before the pattern compiler is invoked.
 ;;    \-------------------------/    one element for different expansions of the ellipses
 ;; the failures to match are just removed from the outer list before this function finishes
 ;; via the `fail' argument to `loop'.
-(define (match-list/raw patterns exp)
+(define (match-list/raw patterns orig-term)
   (let/ec k
     (let loop ([patterns patterns]
-               [exp exp]
+               [exp orig-term]
+               [list-pos 1]
                ;; fail : -> alpha
                ;; causes one possible expansion of ellipses to fail
                ;; initially there is only one possible expansion, so
@@ -963,10 +912,10 @@ before the pattern compiler is invoked.
          (let ([fst-pat (car patterns)])
            (cond
              [(repeat? fst-pat)
-              (if (or (null? exp) (term-pair? exp))
+              (if (or (null? exp) (pair? exp))
                   (let ([r-pat (repeat-pat fst-pat)]
                         [r-mt (mtch (make-bindings (repeat-empty-bindings fst-pat))
-                                    (non-decomp '()))])
+                                    (non-decomp))])
                     (apply 
                      append
                      (cons (let/ec k
@@ -974,50 +923,51 @@ before the pattern compiler is invoked.
                                (map (lambda (pat-ele) 
                                       (cons (add-ellipses-index (list r-mt) (repeat-suffix fst-pat) (repeat-mismatch? fst-pat) 0)
                                             pat-ele))
-                                    (loop (cdr patterns) exp mt-fail))))
+                                    (loop (cdr patterns) exp list-pos mt-fail))))
                            (let r-loop ([rest-exp exp]
-                                        ;; past-matches is in reverse order
-                                        ;; it gets reversed before put into final list
                                         [past-matches (list r-mt)]
-                                        [index 1])
+                                        [repeat-length 1]
+                                        [list-pos list-pos])
                              (cond
-                               [(term-pair? rest-exp)
-                                (let ([m (r-pat (term-first rest-exp))])
+                               [(pair? rest-exp)
+                                (let ([m (r-pat (car rest-exp))])
                                   (if m
-                                      (let* ([combined-matches (collapse-single-multiples m past-matches)]
+                                      (let* ([combined-matches (collapse-single-multiples list-pos m past-matches)]
                                              [reversed 
                                               (add-ellipses-index 
-                                               (reverse-multiples combined-matches exp)
+                                               (reverse-multiples combined-matches)
                                                (repeat-suffix fst-pat)
                                                (repeat-mismatch? fst-pat)
-                                               index)])
+                                               repeat-length)])
                                         (cons 
                                          (let/ec fail-k
                                            (map (lambda (x) (cons reversed x))
                                                 (loop (cdr patterns) 
-                                                      (term-rest rest-exp)
+                                                      (cdr rest-exp)
+                                                      (+ list-pos 1)
                                                       (lambda () (fail-k null)))))
-                                         (r-loop (term-rest rest-exp)
+                                         (r-loop (cdr rest-exp)
                                                  combined-matches
-                                                 (+ index 1))))
+                                                 (+ repeat-length 1)
+                                                 (+ list-pos 1))))
                                       (list null)))]
                                ;; what about dotted pairs?
                                [else (list null)])))))
                   (fail))]
              [else
               (cond
-                [(term-pair? exp)
-                 (let* ([fst-exp (term-first exp)]
-                        [match (fst-pat fst-exp)])
-                   (if match
-                       (let ([exp-match (map (match-lambda
-                                               [(mtch b (decomp c t))
-                                                (mtch b (decomp (left c null) t))]
-                                               [(mtch b (non-decomp t))
-                                                (mtch b (non-decomp ((term-constructor exp) t null)))])
-                                             match)])
-                         (map (lambda (x) (cons exp-match x))
-                              (loop (cdr patterns) (term-rest exp) fail)))
+                [(pair? exp)
+                 (let* ([fst-exp (car exp)]
+                        [matches (fst-pat fst-exp)])
+                   (if matches
+                       (let ([indexed 
+                              (for/list ([m matches])
+                                (match m
+                                  [(mtch _ (non-decomp)) m]
+                                  [(mtch b (decomp c t))
+                                   (mtch b (indexed-decomp c t list-pos))]))])
+                         (map (lambda (x) (cons indexed x))
+                              (loop (cdr patterns) (cdr exp) (+ list-pos 1) fail)))
                        (fail)))]
                 [else
                  (fail)])]))]
@@ -1038,26 +988,23 @@ before the pattern compiler is invoked.
              mtchs))
       mtchs))
 
-;; collapse-single-multiples : (listof mtch) (listof mtch[to-lists]) -> (listof mtch[to-lists])
-(define (collapse-single-multiples bindingss multiple-bindingss)
+;; collapse-single-multiples : nat (listof mtch) (listof mtch[to-lists]) -> (listof mtch[to-lists])
+(define (collapse-single-multiples single-index bindingss multiple-bindingss)
   (for*/fold ([matches null])
              ([single-match bindingss]
               [multiple-match multiple-bindingss])
-             (match* (single-match multiple-match) ; both match lists
-                     [((mtch _ (decomp _ _)) (mtch _ (decomp _ _)))
+             (match* (single-match multiple-match)
+                     [((mtch _ (? decomp?)) (mtch _ (? decomp?)))
                       matches]
-                     [((mtch b1 (decomp c t)) (mtch b2 (non-decomp ts)))
+                     [((mtch b1 (decomp c t)) (mtch b2 (? non-decomp?)))
                       (cons (mtch (cons-bindings b1 b2)
-                                  (decomp (left c ts) t))
+                                  (indexed-decomp c t single-index))
                             matches)]
-                     [((mtch b1 (non-decomp t1)) (mtch b2 (decomp c t2)))
-                      (cons (mtch (cons-bindings b1 b2)
-                                  (decomp (right t1 c) t2))
+                     [((mtch b1 (? non-decomp?)) (mtch b2 (? indexed-decomp? d)))
+                      (cons (mtch (cons-bindings b1 b2) d)
                             matches)]
-                     [((mtch b1 (non-decomp t)) (mtch b2 (non-decomp ts)))
-                      (cons (mtch (cons-bindings b1 b2)
-                                  ;; reverse-multiples replaces the cons where needed
-                                  (non-decomp (cons t ts)))
+                     [((mtch b1 (? non-decomp?)) (mtch b2 (? non-decomp?)))
+                      (cons (mtch (cons-bindings b1 b2) (non-decomp))
                             matches)])))
 
 (define (cons-bindings head-bindings tail-bindings)
@@ -1076,11 +1023,11 @@ before the pattern compiler is invoked.
         (bindings-table tail-bindings))))
 
 ;; reverse-multiples : (listof mtch[to-lists]) -> (listof mtch[to-lists])
-;; reverses the rhs of each rib in the bindings and reverses the matched term
-(define (reverse-multiples matches seq-start)
-  (map (lambda (m)
-         (let ([bindings (mtch-bindings m)])
-           (mtch
+;; reverses the rhs of each rib in the bindings
+(define (reverse-multiples matches)
+  (map (lambda (match)
+         (let ([bindings (mtch-bindings match)])
+           (make-mtch
             (make-bindings
              (map (lambda (rib)
                     (cond
@@ -1091,52 +1038,13 @@ before the pattern compiler is invoked.
                        (make-mismatch-bind (mismatch-bind-name rib)
                                            (reverse (mismatch-bind-exp rib)))]))
                   (bindings-table bindings)))
-            (match m
-              [(mtch _ (decomp c t))
-               ;; c is a prefix of seq-start. As a sequence of term constructors,
-               ;; it has the following shape:
-               ;;   R_i+j ... L_i+1 C_i ...
-               ;; Reversing it means turning C_i ... into rights, leaving the left
-               ;; in place, and replacing R_i+j ... with the constructors at the
-               ;; corresponding positions in seq-start.
-               ;;
-               ;; For example, consider matching the pattern
-               ;;   (in-hole ((name x p1) ... p2 ...) p3)
-                ;; against the term
-               ;;   (t1 t2 t3 t4 t5 t6)
-               ;; Suppose that in one expansion of the ellipses, the first consumes
-               ;; t1 through t5, placing the hole within t3. Then rights connect t5
-               ;; to t4 and t4 to t3, a left connects t3 to t2, and conses connect 
-               ;; the rest. Reversing the context formed by decomposition means 
-               ;; creating a path from t1 into t3. In the input, another path could
-               ;; begin at t4, so reversal needs to preserve the constructor that
-               ;; connects them.
-               (define seq-after-hole
-                 (let loop ([rest-ctxt c] [seq seq-start])
-                   (if (right? rest-ctxt)
-                       ((term-constructor seq) 
-                        (term-first seq) 
-                        (loop (term-rest rest-ctxt) (term-rest seq)))
-                       null)))
-               (define reversed
-                 (let loop ([rest-ctxt c] [reversed null])
-                   (match rest-ctxt
-                     [(? null?) reversed]
-                     [(left t c)
-                      (loop c (left t seq-after-hole))]
-                     [(right t c)
-                      (loop c reversed)]
-                     [(cons t c)
-                      (loop c (right t reversed))])))
-               (decomp reversed t)]
-              [(mtch _ (non-decomp ts))
-               (non-decomp (term-take seq-start (length ts)))]))))
+            (mtch-matched match))))
        matches))
 
 ;; match-nt : (listof compiled-rhs) (listof compiled-rhs) sym exp
 ;;        -> (union #f (listof bindings))
 (define (match-nt list-rhs non-list-rhs nt term)
-  (let loop ([rhss (if (or (null? term) (term-pair? term))
+  (let loop ([rhss (if (or (null? term) (pair? term) (layer? term))
                        list-rhs
                        non-list-rhs)]
              [ht #f])
@@ -1254,41 +1162,51 @@ before the pattern compiler is invoked.
                         (loop (car r-exps) (i-loop (cdr r-exps) ribs))]))])))]
       [else ribs])))
 
-;; combine-matches : (listof (listof mtch)) -> (listof mtch)
+;; combine-matches : term (listof (listof mtch)) -> (listof mtch)
 ;; input is the list of bindings corresonding to a piecewise match
 ;; of a list. produces all of the combinations of complete matches
-(define (combine-matches matchess)
-  (let loop ([matchess matchess])
-    (cond
-      [(null? matchess) combine-matches-base-case]
-      [else (combine-pair (car matchess) (loop (cdr matchess)))])))
+(define (combine-matches matched-term matchess)
+  (define ms
+    (let loop ([matchess matchess])
+      (cond
+        [(null? matchess) combine-matches-base-case]
+        [else (combine-pair (car matchess) (loop (cdr matchess)))])))
+  (for/list ([m ms])
+    (match m
+      [(mtch _ (non-decomp)) m]
+      [(mtch b (indexed-decomp c t i))
+       (define-values (l r)
+         (layer-sides
+          (match matched-term
+            [(layer l c r) (append l (cons c r))]
+            [_ matched-term])
+          i))
+       (mtch b (decomp (layer l c r) t))])))
 
 (define combine-matches-base-case 
   (list (mtch (make-bindings null)
-              (non-decomp null))))
+              (non-decomp))))
+
+(define (layer-sides ts i)
+  (if (= i 1)
+      (values null (cdr ts))
+      (let-values ([(l r) (layer-sides (cdr ts) (- i 1))])
+        (values (cons (car ts) l) r))))
 
 ;; combine-pair : (listof mtch) (listof mtch) -> (listof mtch)
 (define (combine-pair fst snd)
   (for*/fold ([mtchs null]) ([mtch1 fst] [mtch2 snd])
              (match* (mtch1 mtch2) ; both match lists
-                     [((mtch _ (decomp _ _)) (mtch _ (decomp _ _)))
+                     [((mtch _ (? decomp?)) (mtch _ (? decomp?)))
                       mtchs]
-                     [((mtch b1 (decomp c t)) (mtch b2 (non-decomp ts)))
-                      (cons (mtch (append-bindings b1 b2)
-                                  (decomp (term-append c ts) t))
+                     [((mtch b1 (? decomp? d)) (mtch b2 (non-decomp)))
+                      (cons (mtch (append-bindings b1 b2) d)
                             mtchs)]
-                     [((mtch b1 (non-decomp ts)) (mtch b2 (decomp c t)))
-                      (define combined
-                        (let app ([ts ts])
-                          (if (null? ts)
-                              c
-                              (right (term-first ts) (app (term-rest ts))))))
-                      (cons (mtch (append-bindings b1 b2)
-                                  (decomp combined t))
+                     [((mtch b1 (non-decomp)) (mtch b2 (? decomp? d)))
+                      (cons (mtch (append-bindings b1 b2) d)
                             mtchs)]
-                     [((mtch b1 (non-decomp t1)) (mtch b2 (non-decomp t2)))
-                      (cons (mtch (append-bindings b1 b2)
-                                  (non-decomp (term-append t1 t2)))
+                     [((mtch b1 (non-decomp)) (mtch b2 (non-decomp)))
+                      (cons (mtch (append-bindings b1 b2) (non-decomp))
                             mtchs)])))
 
 (define (append-bindings bs cs)
@@ -1323,7 +1241,7 @@ before the pattern compiler is invoked.
  (make-mtch (bindings? non-decomp? . -> . mtch?))
  (mtch-bindings (mtch? . -> . bindings?))
  (mtch-matched (mtch? . -> . non-decomp?))
- (non-decomp (any/c . -> . non-decomp?))
+ (non-decomp (-> non-decomp?))
  
  (make-bind (symbol? any/c . -> . bind?))
  (bind? (any/c . -> . boolean?))
@@ -1344,8 +1262,8 @@ before the pattern compiler is invoked.
 (provide (struct-out nt)
          (struct-out rhs)
          (struct-out compiled-lang)
-         (struct-out left)
-         (struct-out right)
+         (struct-out layer)
+         context?
          
          lookup-binding
          

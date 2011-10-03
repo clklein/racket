@@ -18,6 +18,7 @@
 (define-syntax (hide-hole stx) (raise-syntax-error 'hide-hole "used outside of term"))
 
 (define-struct hidden-hole (term))
+(define-struct plugged (term hole?))
 
 (define (with-syntax* stx)
   (syntax-case stx ()
@@ -152,44 +153,51 @@
      (let*-values ([(c* _) (make-term* #'c)]
                    [(t* t?) (make-term* #'t)]
                    [(p p?) (plug* c* t* t?)])
-       (instantiated p p?))]))
+       (plugged p p?))]))
 
-(define-struct instantiated (term hole?))
-
-(define make-term*
-  (match-lambda
-    [(? syntax? stx)
-     (make-term* (syntax-e stx))]
-    [(hidden-hole (list t))
-     (values (make-term t) #f)]
-    [(instantiated t h?)
-     (values t h?)]
-    [(? hole?)
-     (values the-hole #t)]
-    [(left l r)
-     (values (left (make-term l) (make-term r))
-             #t)]
-    [(right l r)
-     (values (right (make-term l) (make-term r))
-             #t)]
-    [(cons l r)
-     (define-values (lt lh?) (make-term* l))
-     (define-values (rt rh?) (make-term* r))
-     (join lt lh? rt rh?)]
-    [t (values t #f)]))
 (define (make-term s)
   (let-values ([(t _) (make-term* s)])
     t))
 
+(define make-term*
+  (match-lambda
+    [(? syntax? s)
+     (make-term* (syntax-e s))]
+    [(hidden-hole (list t))
+     (values t #f)]
+    [(plugged t t?)
+     (values t t?)]
+    [(? hole?)
+     (values the-hole #t)]
+    [(? layer? l)
+     (values l #t)]
+    [(cons h t)
+     (define-values (ht h?) (make-term* h))
+     (define-values (tt t?) (make-term* t))
+     (join ht h? tt t?)]
+    [t (values t #f)]))
+
+(define join
+  (match-lambda**
+   [((? context? t) #t ts #f)
+    (values (layer null t ts) #t)]
+   [(t #f (layer l c r) #t)
+    (values (layer (cons t l) c r) #t)]
+   [(t t? (layer l c r) ts?)
+    (values (cons t (append l (cons c r)))
+            (or t? ts?))]
+   [(t t? ts ts?)
+    (values (cons t ts) (or t? ts?))]))
+
 (define (plug* C t t?)
   (match C
-    [(? hole?) (values t t?)]
-    [(left C* r) 
+    [(? hole?) 
+     (values t t?)]
+    [(layer l C* r)
      (let-values ([(p p?) (plug* C* t t?)])
-       (join p p? r #f))]
-    [(right l C*)
-     (let-values ([(p p?) (plug* C* t t?)])
-       (join l #f p p?))]
+       (if p?
+           (values (layer l p r) #t)
+           (values (append l (cons p r)) #f)))]
     [_ (redex-error 'plug "term has no pluggable hole:\n~s" C)]))
 
 (define (plug C t)
@@ -199,23 +207,11 @@
 (define has-context?
   (match-lambda
     [(? hole?) #t]
-    [(? left?) #t]
-    [(? right?) #t]
+    [(? layer?) #t]
     [(cons l r) 
      (or (has-context? l)
          (has-context? r))]
     [_ #f]))
-
-(define (join l l? r r?)
-  (match* (l? r?)
-          [(#t #t) 
-           (values (cons l r) #t)]
-          [(#t #f)
-           (values (left l r) #t)]
-          [(#f #t) 
-           (values (right l r) #t)]
-          [(#f #f) 
-           (values (cons l r) #f)]))
 
 (define-syntax (term-let-fn stx)
   (syntax-case stx ()

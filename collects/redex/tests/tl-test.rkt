@@ -525,6 +525,13 @@
     (test (term (g (hole a) 1))
           (term (1 a))))
   
+  (let ()
+    (define-language L)
+    (define-metafunction L
+      [(f) (hide-hole (hole 2))])
+    (test (term (in-hole (f) 1))
+          (term (1 2))))
+  
   ; Extension reinterprets the base meta-function's contract
   ; according to the new language.
   (let ()

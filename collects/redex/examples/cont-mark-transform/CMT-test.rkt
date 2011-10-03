@@ -103,12 +103,10 @@
 ; continuation value in continuation mark of a continuation value
 (test-translation
  ((λ (x) ("skipped" x))
-  ((κ ,(right (term w-c-m)
-              (right (term ("a"))
-                     (right (term (κ ((λ (x) ("wrapped" x)) hole)))
-                            (left (term ((λ (x) ("skipped" x))
-                                         (hole)))
-                                  null)))))
+  ((κ (hide-hole
+       (w-c-m ("a") (κ (hide-hole ((λ (x) ("wrapped" x)) hole)))
+              ((λ (x) ("skipped" x))
+               (hole)))))
    (λ ()
      ((λ (ms)
         (match ms
