@@ -9,6 +9,9 @@ to demonstrate various different uses of PLT Redex:
 
   cbn-letrec.rkt: the definition of evaluation contexts in Ariola and
   Felleisen's call-by-need letrec calculus
+  
+  beta-need.rkt: Chang and Felleisen's call-by-need standard reduction
+  relation
 
   church.rkt: Church numerals with call by name
   normal order evaluation

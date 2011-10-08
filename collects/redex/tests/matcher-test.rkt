@@ -2,6 +2,8 @@
   (require "../private/matcher.rkt"
            "../private/error.rkt"
            (only "test-util.rkt" equal/bindings?)
+           racket/match
+           racket/set
            mzlib/list)
   
   (error-print-width 500)
@@ -56,7 +58,7 @@
     (test-empty '(variable-except x) 1 #f)
     (test-empty '(variable-except x) 'x #f)
     (test-empty '(variable-except x) 'y (list (make-test-mtch (make-bindings null))))
-    (test-lang 'x 'y (list (make-test-mtch (make-bindings (list (make-bind 'x 'y)))))
+    (test-lang 'x 'y (list (make-bindings (list (make-bind 'x 'y))))
                (list (make-nt 'x (list (make-rhs '(variable-except x))))))
     (test-empty '(variable-prefix x:) 'x: (list (make-test-mtch (make-bindings null))))
     (test-empty '(variable-prefix x:) 'x:x (list (make-test-mtch (make-bindings null))))
@@ -267,29 +269,29 @@
                                                            (make-bind 'y '()))))))
     
     (test-ab '(bb_y ... aa_x ...) '() 
-             (list (make-test-mtch (make-bindings (list (make-bind 'aa_x '())
-                                                        (make-bind 'bb_y '()))))))
+             (list (make-bindings (list (make-bind 'aa_x '())
+                                        (make-bind 'bb_y '())))))
     (test-ab '(bb_y ... aa_x ...) '(a)
-             (list (make-test-mtch (make-bindings (list (make-bind 'aa_x '(a))
-                                                   (make-bind 'bb_y '()))))))
+             (list (make-bindings (list (make-bind 'aa_x '(a))
+                                        (make-bind 'bb_y '())))))
     (test-ab '(bb_y ... aa_x ...) '(b) 
-             (list (make-test-mtch (make-bindings (list (make-bind 'aa_x '())
-                                                   (make-bind 'bb_y '(b)))))))
+             (list (make-bindings (list (make-bind 'aa_x '())
+                                        (make-bind 'bb_y '(b))))))
     (test-ab '(bb_y ... aa_x ...) '(b b a a) 
-             (list (make-test-mtch (make-bindings (list (make-bind 'aa_x '(a a))
-                                                        (make-bind 'bb_y '(b b)))))))
+             (list (make-bindings (list (make-bind 'aa_x '(a a))
+                                        (make-bind 'bb_y '(b b))))))
     (test-ab '(aa_y ... aa_x ...) '(a) 
-             (list (make-test-mtch (make-bindings (list (make-bind 'aa_x '())
-                                                        (make-bind 'aa_y '(a)))))
-                   (make-test-mtch (make-bindings (list (make-bind 'aa_x '(a))
-                                                        (make-bind 'aa_y '()))))))
+             (list (make-bindings (list (make-bind 'aa_x '())
+                                        (make-bind 'aa_y '(a))))
+                   (make-bindings (list (make-bind 'aa_x '(a))
+                                        (make-bind 'aa_y '())))))
     (test-ab '(aa_y ... aa_x ...) '(a a) 
-             (list (make-test-mtch (make-bindings (list (make-bind 'aa_x '())
-                                                        (make-bind 'aa_y '(a a)))))
-                   (make-test-mtch (make-bindings (list (make-bind 'aa_x '(a))
-                                                        (make-bind 'aa_y '(a)))))
-                   (make-test-mtch (make-bindings (list (make-bind 'aa_x '(a a))
-                                                        (make-bind 'aa_y '()))))))
+             (list (make-bindings (list (make-bind 'aa_x '())
+                                        (make-bind 'aa_y '(a a))))
+                   (make-bindings (list (make-bind 'aa_x '(a))
+                                        (make-bind 'aa_y '(a))))
+                   (make-bindings (list (make-bind 'aa_x '(a a))
+                                        (make-bind 'aa_y '())))))
     
     (test-empty '((name x number) ...) '(1 2) (list (make-test-mtch (make-bindings (list (make-bind 'x '(1 2)) (make-bind 'number '(1 2)))))))
     
@@ -298,9 +300,9 @@
     (test-empty '(a ... b) '(b c) #f)
     (test-empty '(a ... b) '(a b c) #f)
     
-    (test-lang '(n n ...) '((1 1) 1 1) (list (make-test-mtch (make-bindings (list (make-bind 'n '(1 1))))))
+    (test-lang '(n n ...) '((1 1) 1 1) (list (make-bindings (list (make-bind 'n '(1 1)))))
                (list (make-nt 'n (list (make-rhs 'any) (make-rhs 'number)))))
-    (test-lang '(n (n ...)) '((1 1) (1 1)) (list (make-test-mtch (make-bindings (list (make-bind 'n '(1 1))))))
+    (test-lang '(n (n ...)) '((1 1) (1 1)) (list (make-bindings (list (make-bind 'n '(1 1)))))
                (list (make-nt 'n (list (make-rhs 'any) (make-rhs 'number)))))
     (test-empty '((name x any) 
                   ((name x number) ...))
@@ -317,7 +319,7 @@
     (test-empty '(number ...) '()
                 (list (make-test-mtch (make-bindings (list (make-bind 'number '()))))))
     (test-ab '(aa ...) '()
-             (list (make-test-mtch (make-bindings (list (make-bind 'aa '()))))))
+             (list (make-bindings (list (make-bind 'aa '())))))
     
     
     ;; testing block-in-hole
@@ -667,8 +669,7 @@
       (test-unwrapped-cont-vals
        'e
        id
-       (list (make-test-mtch 
-              (make-bindings (list (make-bind 'e id)))))))
+       (list (make-bindings (list (make-bind 'e id))))))
     
     (let* ([f '(λ (x) x)]
            [a '(λ (y) y)]
@@ -676,18 +677,15 @@
       (test-unwrapped-cont-vals
        '(in-hole E e)
        t
-       (list (make-test-mtch 
-              (make-bindings 
-               (list (make-bind 'e t)
-                     (make-bind 'E the-hole))))
-             (make-test-mtch 
-              (make-bindings 
-               (list (make-bind 'e f)
-                     (make-bind 'E (layer '() the-hole `(,a))))))
-             (make-test-mtch 
-              (make-bindings 
-               (list (make-bind 'e a)
-                     (make-bind 'E (layer `(,f) the-hole '()))))))))
+       (list (make-bindings 
+              (list (make-bind 'e t)
+                    (make-bind 'E the-hole)))
+             (make-bindings 
+              (list (make-bind 'e f)
+                    (make-bind 'E (layer '() the-hole `(,a)))))
+             (make-bindings 
+              (list (make-bind 'e a)
+                    (make-bind 'E (layer `(,f) the-hole '())))))))
     
     (let* ([v '(λ (y) y)]
            [r `((λ (x) x) ,v)]
@@ -695,32 +693,27 @@
       (test-unwrapped-cont-vals
        '(in-hole E (name r ((λ (x) e) v)))
        t
-       (list (make-test-mtch
-              (make-bindings
-               (list (make-bind 'E (layer `(,the-hole) the-hole '()))
-                     (make-bind 'r r)
-                     (make-bind 'x 'x)
-                     (make-bind 'e 'x)
-                     (make-bind 'v v)))))))
+       (list (make-bindings
+              (list (make-bind 'E (layer `(,the-hole) the-hole '()))
+                    (make-bind 'r r)
+                    (make-bind 'x 'x)
+                    (make-bind 'e 'x)
+                    (make-bind 'v v))))))
     
     (let ([t `(,the-hole ,the-hole)])
       (test-unwrapped-cont-vals
        'v
        t
-       (list (make-test-mtch
-              (make-bindings (list (make-bind 'v t))))))
+       (list (make-bindings (list (make-bind 'v t)))))
       (test-unwrapped-cont-vals
        '(in-hole E e)
        t
-       (list (make-test-mtch
-              (make-bindings (list (make-bind 'E the-hole)
-                                   (make-bind 'e t))))
-             (make-test-mtch
-              (make-bindings (list (make-bind 'E (layer '() the-hole `(,the-hole)))
-                                   (make-bind 'e the-hole))))
-             (make-test-mtch
-              (make-bindings (list (make-bind 'E (layer `(,the-hole) the-hole '()))
-                                   (make-bind 'e the-hole)))))))
+       (list (make-bindings (list (make-bind 'E the-hole)
+                                  (make-bind 'e t)))
+             (make-bindings (list (make-bind 'E (layer '() the-hole `(,the-hole)))
+                                  (make-bind 'e the-hole)))
+             (make-bindings (list (make-bind 'E (layer `(,the-hole) the-hole '()))
+                                  (make-bind 'e the-hole))))))
     
     (let* ([x 'y]
            [e 'y]
@@ -729,10 +722,9 @@
       (test-unwrapped-cont-vals
        '((λ (x) e) v)
        t
-       (list (make-test-mtch
-              (make-bindings (list (make-bind 'x x)
-                                   (make-bind 'e e)
-                                   (make-bind 'v v)))))))
+       (list (make-bindings (list (make-bind 'x x)
+                                  (make-bind 'e e)
+                                  (make-bind 'v v))))))
     
     (run-test/cmp 'split-underscore1 (split-underscore 'a_1) 'a eq?)
     (run-test/cmp 'split-underscore2 (split-underscore 'a_!_1) 'a eq?)
@@ -747,6 +739,71 @@
     (test-ellipsis-binding '(((number_1 ...) (number_2 ...)) ...) '() '(((1) (2))))
     (test-ellipsis-binding '(number ... variable) '() '(1 x))
     (test-ellipsis-binding '((in-hole H_1 number_1) ...) '((H hole)) '(1 2))
+        
+    (let-values ([(nts _) (left-recursive-non-terminals '((a a)))])
+      (run-test/cmp 'left-recursion-direct nts (set 'a) equal?))
+    (let-values ([(nts _) (left-recursive-non-terminals '((a b) 
+                                                          (b c)
+                                                          (c a)))])
+      (run-test/cmp 'left-recursion-indirect nts (set 'a 'b 'c) equal?))
+    (let-values ([(nts _) (left-recursive-non-terminals '((a (in-hole hole a))))])
+      (run-test/cmp 'left-recursion-hole-direct nts (set 'a) equal?))
+    (let-values ([(nts _) (left-recursive-non-terminals '((a (in-hole hole b))
+                                                          (b a)))])
+      (run-test/cmp 'left-recursion-hole-indirect nts (set 'a 'b) equal?))
+    (let-values ([(nts _) (left-recursive-non-terminals '((a (in-hole b a))
+                                                          (b c hole)))])
+      (run-test/cmp 'left-recursion-indirect-hole nts (set 'a) equal?))
+    (let-values ([(nts _) (left-recursive-non-terminals '((a (in-hole b a))
+                                                          (b c (hide-hole hole))))])
+      (run-test/cmp 'left-recursion-hide-hole nts (set) equal?))
+    (let-values ([(nts _) (left-recursive-non-terminals '((a (name x a))))])
+      (run-test/cmp 'left-recursion-name nts (set 'a) equal?))
+    (let-values ([(nts _) (left-recursive-non-terminals '((a (side-condition a #t unused))))])
+      (run-test/cmp 'left-recursion-side-condition nts (set 'a) equal?))
+    (let-values ([(nts _) (left-recursive-non-terminals '((a (in-hole (cross b) a))
+                                                          (b 1)))])
+      (run-test/cmp 'left-recursion-cross nts (set 'a) equal?))
+    (let-values ([(nts cross-nts) (left-recursive-non-terminals '((M hole (1 M))
+                                                          (E M (in-hole E (2 M)))))])
+      (run-test/cmp 'left-recursion-delimited nts (set 'E) equal?)
+      (run-test/cmp 'left-recursion-delimited-cross cross-nts (set 'E-E 'M-E) equal?))
+    
+    (test-lang 'a '() #f (list (make-nt 'a (list (make-rhs 'a)))))
+    (test-lang 'a 'b
+               (list (make-bindings (list (make-bind 'a 'b)))) 
+               (list (make-nt 'a (list (make-rhs 'a) (make-rhs 'b)))))
+    (test-lang 'a 'c
+               (list (make-bindings (list (make-bind 'a 'c)))) 
+               (list (make-nt 'a (list (make-rhs 'b)))
+                     (make-nt 'b (list (make-rhs 'a) (make-rhs 'c)))))
+    (test-lang 'b 'c
+               (list (make-bindings (list (make-bind 'b 'c)))) 
+               (list (make-nt 'a (list (make-rhs 'b)))
+                     (make-nt 'b (list (make-rhs 'a) (make-rhs 'c)))))
+    
+    (let ([n (box 0)])
+      (define left-rec-cache-lang
+        (compile-language-from-sexp
+         `((a a (side-condition b ,(λ (_) (set-box! n (+ 1 (unbox n)))) no-src)))))
+      (define compiled (compile-pattern left-rec-cache-lang 'a #t))
+      (match-pattern compiled 'b)
+      (define after-one (unbox n))
+      (match-pattern compiled 'b)
+      (run-test/cmp 'left-rec-nt-cached (unbox n) after-one =)
+      (parameterize ([caching-enabled? #f])
+        (match-pattern compiled 'b)))
+    
+    (define test-left-rec-nested-parens
+      (make-test-lang 'left-rec-nested-parens
+                      '((W hole (in-hole W (hole))))))
+    (define (test-left-rec-nested-parens-match term)
+      (test-left-rec-nested-parens 
+       'W term (list (make-bindings (list (make-bind 'W term))))))
+    
+    (test-left-rec-nested-parens-match the-hole)
+    (test-left-rec-nested-parens-match `(,the-hole))
+    (test-left-rec-nested-parens-match `((,the-hole)))
     
     (cond
       [(= failures 0)
@@ -791,111 +848,78 @@
        (match-pattern 
         (compile-pattern (compile-language 'pict-stuff-not-used nts nt-map) pat #t)
         exp)
-       ans)))
+       (and ans (map make-test-mtch ans)))))
   
-  (define xab-lang #f)
-  ;; test-xab : sexp[pattern] sexp[term] (or/c false/c (listof binding)) -> void
-  ;; returns #t if pat matching exp with a simple language produces ans.
-  (define (test-xab pat exp ans)
-    (unless xab-lang
-      (let ([nts
-             (list (make-nt 'exp
-                            (list (make-rhs '(+ exp exp))
-                                  (make-rhs 'number)))
-                   (make-nt 'ctxt
-                            (list (make-rhs '(+ ctxt exp))
-                                  (make-rhs '(+ exp ctxt))
-                                  (make-rhs 'hole)))
-                   
-                   (make-nt 'ec-one
-                            (list (make-rhs '(+ (hole xx) exp))
-                                  (make-rhs '(+ exp (hole xx)))))
-                   
-                   (make-nt 'same-in-nt (list (make-rhs '((name x any) (name x any)))))
-                   
-                   (make-nt 'forever-list (list (make-rhs '(forever-list forever-list ...))
-                                                (make-rhs 'x)))
-                   
-                   (make-nt 'lsts
-                            (list (make-rhs '())
-                                  (make-rhs '(x))
-                                  (make-rhs 'x)
-                                  (make-rhs '#f)))
-                   (make-nt 'split-out
-                            (list (make-rhs 'split-out2)))
-                   (make-nt 'split-out2
-                            (list (make-rhs 'number)))
-                   
-                   (make-nt 'simple (list (make-rhs 'simple-rhs)))
-                   
-                   (make-nt 'nesting-names
-                            (list (make-rhs '(a (name x nesting-names)))
-                                  (make-rhs 'b)))
-                   (make-nt 'var (list (make-rhs `variable-not-otherwise-mentioned)))
-                   
-                   (make-nt 'underscore (list (make-rhs 'exp_1)))
-                   
-                   (make-nt 'a-or-hole (list (make-rhs 'hole) (make-rhs 'a)))
-                   
-                   (make-nt 'num-tree (list (make-rhs 'number)
-                                            (make-rhs '(num-tree ...))))
-                   (make-nt 'num-tree-ctxt (list (make-rhs 'hole)
-                                                 (make-rhs '(num-tree ... num-tree-ctxt num-tree ...))))
-                   
-                   (make-nt 'W (list (make-rhs 'hole)
-                                     (make-rhs '((in-hole W_1 (number hole))
-                                                 W_1)))))])
-      (set! xab-lang
-            (compile-language 'pict-stuff-not-used
-                              nts
-                              (map (λ (x) (list (nt-name x))) nts)))))
-    (run-match-test
-     `(match-pattern (compile-pattern xab-lang ',pat #t) ',exp)
-     (match-pattern (compile-pattern xab-lang pat #t) exp)
-     (and ans
-          (map (λ (b) (make-test-mtch b))
-               ans))))
+  ;; compile-language-from-sexp : (listof (cons/c symbol sexp)) -> compiled-language
+  (define (compile-language-from-sexp grammar)
+    (compile-language 'pict-stuff-not-used
+                      (map (match-lambda
+                             [(cons nt-name alternatives)
+                              (make-nt nt-name (map make-rhs alternatives))])
+                           grammar)
+                      (map (match-lambda
+                             [(cons nt-name alternatives)
+                              (list nt-name)])
+                           grammar)))
   
-  (define ab-lang #f)
-  ;; test-xab : sexp[pattern] sexp[term] answer -> void
-  ;; returns #t if pat matching exp with a simple language produces ans.
-  (define (test-ab pat exp ans)
-    (unless ab-lang
-      (set! ab-lang
-            (compile-language 
-             'pict-stuff-not-used
-             (list (make-nt 'aa
-                            (list (make-rhs 'a)))
-                   (make-nt 'bb
-                            (list (make-rhs 'b))))
-             '((aa) (bb)))))
-    (run-match-test
-     `(match-pattern (compile-pattern ab-lang ',pat #t) ',exp)
-     (match-pattern (compile-pattern ab-lang pat #t) exp)
-     ans))
+  ;; make-test-lang : (listof (cons/c symbol sexp)) 
+  ;; -> sexp[pattern] sexp[term] (or/c false/c (listof binding)) -> void
+  (define (make-test-lang name grammar)
+    (define compiled (compile-language-from-sexp grammar))
+    (λ (pat exp ans)
+      (run-match-test
+       `(match-pattern (compile-pattern ,name ',pat #t) ',exp)
+       (match-pattern (compile-pattern compiled pat #t) exp)
+       (and ans
+            (map (λ (b) (make-test-mtch b))
+                 ans)))))
   
-  (define unwrapped-cont-vals #f)
-  (define (test-unwrapped-cont-vals pat term ans)
-    (unless unwrapped-cont-vals
-      (define nts
-        (list (make-nt 'e (list (make-rhs '(e e))
-                                (make-rhs 'v)
-                                (make-rhs 'x)))
-              (make-nt 'x (list (make-rhs 'variable-not-otherwise-mentioned)))
-              (make-nt 'v (list (make-rhs '(λ (x) e))
-                                (make-rhs 'E)))
-              (make-nt 'E (list (make-rhs 'hole)
-                                (make-rhs '(E e))
-                                (make-rhs '(v E))))))
-      (set! unwrapped-cont-vals
-            (compile-language
-             'pict-stuff-not-used
-             nts
-             (map (λ (x) (list (nt-name x))) nts))))
-    (run-match-test
-     `(match-pattern (compile-pattern unwraped-cont-vals ',pat #t) ',term)
-     (match-pattern (compile-pattern unwrapped-cont-vals pat #t) term)
-     ans))
+  (define xab-grammar
+    '((exp (+ exp exp) 
+           number)
+      (ctxt (+ ctxt exp)
+            (+ exp ctxt)
+            hole)
+      (ec-one (+ (hole xx) exp)
+              (+ exp (hole xx)))
+      (same-in-nt ((name x any) (name x any)))
+      (forever-list (forever-list forever-list ...)
+                    x)
+      (lsts ()
+            (x)
+            x
+            #f)
+      (split-out split-out2)
+      (split-out2 number)
+      (simple simple-rhs)
+      (nesting-names (a (name x nesting-names))
+                     b)
+      (var variable-not-otherwise-mentioned)
+      (underscore exp_1)
+      (a-or-hole hole
+                 a)
+      (num-tree number
+                (num-tree ...))
+      (num-tree-ctxt hole
+                     (num-tree ... num-tree-ctxt num-tree ...))
+      (W hole
+         ((in-hole W_1 (number hole))
+          W_1))))
+  
+  (define xab-lang (compile-language-from-sexp xab-grammar))
+  
+  (define test-xab
+    (make-test-lang 'xab-lang xab-grammar))
+  
+  (define test-ab
+    (make-test-lang 'ab '((aa a) (bb b))))
+  
+  (define test-unwrapped-cont-vals
+    (make-test-lang 'unwrapped-cont-vals
+                    '((e (e e) v x)
+                      (x variable-not-otherwise-mentioned)
+                      (v (λ (x) e) E)
+                      (E hole (E e) (v E)))))
   
   ;; test-ellipses : sexp sexp -> void
   (define (test-ellipses pat expected)
@@ -925,7 +949,9 @@
          ((compiled-pattern-cp
            (let ([nts (map (λ (nt-def) (nt (car nt-def) (map rhs (cdr nt-def)))) nts/sexp)])
              (compile-pattern (compile-language 'pict-stuff-not-used nts (make-nt-map nts)) pat #t)))
-          exp)))))
+          exp
+          #f
+          '())))))
      (binding-names (extract-empty-bindings test-suite:non-underscore-binder? pat))))
   
   ;; run-test/cmp : sexp any any (any any -> boolean)
@@ -961,5 +987,11 @@
                (andmap (λ (y) (memf (λ (x) (equal/bindings? x y)) xs)) ys)
                (= (length xs) (length ys)))]
          [else #f]))))
+  
+  ;; left-recusive-non-terminals : (listof (cons/c symbol sexp)) -> (values (set/c sym) (set/c sym))
+  (define (left-recursive-non-terminals nt-defs)
+    (define compiled (compile-language-from-sexp nt-defs))
+    (values (compiled-lang-left-rec-nts compiled)
+            (compiled-lang-across-left-rec-nts compiled)))
   
   (test))

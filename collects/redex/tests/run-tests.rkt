@@ -32,6 +32,7 @@
    (if test-bitmaps? '("bitmap-test.rkt") '())
    (if test-examples?
        '("../examples/cbn-letrec.rkt"
+         "../examples/beta-need.rkt"
          "../examples/stlc.rkt"
          "../examples/pi-calculus.rkt"
          ("../examples/beginner.rkt" main)
