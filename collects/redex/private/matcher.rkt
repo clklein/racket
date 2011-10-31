@@ -802,7 +802,7 @@ before the pattern compiler is invoked.
        (compiled-pattern-cp pattern)]
       
       [else 
-       (lambda (exp)
+       (lambda (exp memo active)
          (and (equal? pattern exp)
               (list (literal-match exp))))]))
   
